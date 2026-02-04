@@ -37,6 +37,9 @@ android {
     buildFeatures {
         compose = true
     }
+    androidResources {
+        noCompress += "task"
+    }
 }
 
 dependencies {

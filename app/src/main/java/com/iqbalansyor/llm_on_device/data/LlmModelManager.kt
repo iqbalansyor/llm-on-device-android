@@ -35,13 +35,20 @@ class LlmModelManager(private val context: Context) {
         try {
             val outputFile = File(context.filesDir, MODEL_FILENAME)
 
-            if (outputFile.exists()) {
+            if (outputFile.exists() && outputFile.length() > 0) {
                 emit(DownloadState.Completed)
                 return@flow
             }
 
+            // Get file size using openFd if possible, otherwise use a known size
+            val totalSize: Long = try {
+                context.assets.openFd(ASSET_MODEL_FILENAME).use { it.length }
+            } catch (e: Exception) {
+                // Fallback: known size of gemma-3-270m-it-int8.task (~304MB)
+                303950933L
+            }
+
             context.assets.open(ASSET_MODEL_FILENAME).use { input ->
-                val totalSize = context.assets.openFd(ASSET_MODEL_FILENAME).length
                 var copiedSize = 0L
 
                 outputFile.outputStream().use { output ->
@@ -52,7 +59,7 @@ class LlmModelManager(private val context: Context) {
                         output.write(buffer, 0, bytesRead)
                         copiedSize += bytesRead
 
-                        val progress = ((copiedSize * 100) / totalSize).toInt()
+                        val progress = ((copiedSize * 100) / totalSize).toInt().coerceIn(0, 100)
                         emit(DownloadState.Downloading(progress))
                     }
                 }
