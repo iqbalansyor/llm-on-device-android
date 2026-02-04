@@ -43,6 +43,12 @@ Open the project in Android Studio and run on your device.
 - ~300MB storage for the model
 - Device with sufficient RAM (recommended 4GB+)
 
+## APK Size
+
+<p align="center">
+  <img src="screenshots/apk-size.png" width="600" alt="APK Size">
+</p>
+
 ## How It Works
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed explanation of the app architecture and how on-device LLM inference works.
