@@ -1,28 +1,72 @@
 package com.iqbalansyor.llm_on_device.data
 
-import kotlinx.coroutines.delay
+import android.content.Context
+import com.google.mediapipe.tasks.genai.llminference.LlmInference
+import com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
-class ChatRepository {
+class ChatRepository(private val context: Context) {
 
-    private val dummyResponses = listOf(
-        "That's an interesting question! Let me think about it...",
-        "I understand what you're saying. Here's my perspective on that.",
-        "Great point! I'd like to add that there are multiple ways to look at this.",
-        "Thanks for sharing that with me. It's always good to explore new ideas.",
-        "Hmm, that's a thought-provoking topic. Let me elaborate.",
-        "I appreciate your curiosity! Here's what I know about that.",
-        "That's a complex subject, but I'll do my best to explain.",
-        "Interesting! I hadn't considered it from that angle before.",
-        "You raise a valid point. Let me share some thoughts on this.",
-        "I'm glad you asked! This is something I find fascinating."
-    )
+    private val modelManager = LlmModelManager(context)
+    private var llmInference: LlmInference? = null
+    private var llmSession: LlmInferenceSession? = null
 
-    suspend fun sendMessage(userMessage: String): String {
-        // Simulate network/processing delay
-        delay((1000..2000).random().toLong())
+    val isModelReady: Boolean
+        get() = llmSession != null
 
-        // Return a random dummy response
-        // Later this will be replaced with actual LLM call
-        return dummyResponses.random()
+    val isModelDownloaded: Boolean
+        get() = modelManager.isModelDownloaded()
+
+    fun getModelManager(): LlmModelManager = modelManager
+
+    suspend fun initializeModel(): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            if (!modelManager.isModelDownloaded()) {
+                return@withContext Result.failure(Exception("Model not downloaded"))
+            }
+
+            val inferenceOptions = LlmInference.LlmInferenceOptions.builder()
+                .setModelPath(modelManager.modelPath)
+                .setMaxTokens(1024)
+                .build()
+
+            llmInference = LlmInference.createFromOptions(context, inferenceOptions)
+
+            val sessionOptions = LlmInferenceSession.LlmInferenceSessionOptions.builder()
+                .setTopK(40)
+                .setTemperature(0.8f)
+                .setRandomSeed(101)
+                .build()
+
+            llmSession = LlmInferenceSession.createFromOptions(llmInference, sessionOptions)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun sendMessage(userMessage: String): String = withContext(Dispatchers.IO) {
+        val session = llmSession
+            ?: return@withContext "Error: Model not initialized. Please download and load the model first."
+
+        try {
+            val prompt = formatPrompt(userMessage)
+            session.addQueryChunk(prompt)
+            session.generateResponse()
+        } catch (e: Exception) {
+            "Error: ${e.message}"
+        }
+    }
+
+    private fun formatPrompt(userMessage: String): String {
+        return "<start_of_turn>user\n$userMessage<end_of_turn>\n<start_of_turn>model\n"
+    }
+
+    fun close() {
+        llmSession?.close()
+        llmSession = null
+        llmInference?.close()
+        llmInference = null
     }
 }
