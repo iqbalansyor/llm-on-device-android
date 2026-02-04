@@ -51,7 +51,8 @@ Open the project in Android Studio and run on your device.
 
 ## How It Works
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed explanation of the app architecture and how on-device LLM inference works.
+- [ARCHITECTURE.md](ARCHITECTURE.md) - App architecture and on-device LLM inference
+- [TOKENIZATION.md](TOKENIZATION.md) - How tokenization works in LLMs
 
 ## License
 
