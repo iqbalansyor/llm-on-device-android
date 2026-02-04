@@ -2,6 +2,12 @@
 
 A simple Android chat app that runs Gemma 3 LLM locally on your device using MediaPipe.
 
+## Preview
+
+<p align="center">
+  <img src="screenshots/preview.png" width="300" alt="App Preview">
+</p>
+
 ## Features
 
 - On-device LLM inference (no internet required for chat)
