@@ -15,9 +15,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -27,11 +32,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.iqbalansyor.llm_on_device.model.LlmProvider
 import com.iqbalansyor.llm_on_device.ui.components.ChatInput
 import com.iqbalansyor.llm_on_device.ui.components.MessageBubble
 import com.iqbalansyor.llm_on_device.ui.components.TypingIndicator
@@ -56,6 +65,13 @@ fun ChatScreen(
         topBar = {
             TopAppBar(
                 title = { Text("LLM Chat") },
+                actions = {
+                    ProviderDropdown(
+                        selectedProvider = uiState.selectedProvider,
+                        onProviderSelected = { viewModel.setProvider(it) },
+                        enabled = !uiState.isLoading
+                    )
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -74,35 +90,12 @@ fun ChatScreen(
                     .weight(1f)
                     .fillMaxWidth()
             ) {
-                when (val modelState = uiState.modelState) {
-                    is ModelState.NotDownloaded -> {
-                        ModelDownloadPrompt(
-                            onDownloadClick = { viewModel.downloadModel() },
-                            modifier = Modifier.align(Alignment.Center)
-                        )
-                    }
-                    is ModelState.Downloading -> {
-                        DownloadingIndicator(
-                            progress = modelState.progress,
-                            modifier = Modifier.align(Alignment.Center)
-                        )
-                    }
-                    is ModelState.Loading -> {
-                        LoadingModelIndicator(
-                            modifier = Modifier.align(Alignment.Center)
-                        )
-                    }
-                    is ModelState.Error -> {
-                        ErrorState(
-                            message = modelState.message,
-                            onRetryClick = { viewModel.downloadModel() },
-                            modifier = Modifier.align(Alignment.Center)
-                        )
-                    }
-                    is ModelState.Ready -> {
+                when (uiState.selectedProvider) {
+                    LlmProvider.GOOGLE_AI -> {
+                        // Google AI is always ready (no model download needed)
                         if (uiState.messages.isEmpty() && !uiState.isLoading) {
                             Text(
-                                text = "Start a conversation!",
+                                text = "Start a conversation with Google AI!",
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.align(Alignment.Center)
@@ -123,6 +116,58 @@ fun ChatScreen(
                             }
                         }
                     }
+                    LlmProvider.LOCAL -> {
+                        when (val modelState = uiState.modelState) {
+                            is ModelState.NotDownloaded -> {
+                                ModelDownloadPrompt(
+                                    onDownloadClick = { viewModel.downloadModel() },
+                                    modifier = Modifier.align(Alignment.Center)
+                                )
+                            }
+                            is ModelState.Downloading -> {
+                                DownloadingIndicator(
+                                    progress = modelState.progress,
+                                    modifier = Modifier.align(Alignment.Center)
+                                )
+                            }
+                            is ModelState.Loading -> {
+                                LoadingModelIndicator(
+                                    modifier = Modifier.align(Alignment.Center)
+                                )
+                            }
+                            is ModelState.Error -> {
+                                ErrorState(
+                                    message = modelState.message,
+                                    onRetryClick = { viewModel.downloadModel() },
+                                    modifier = Modifier.align(Alignment.Center)
+                                )
+                            }
+                            is ModelState.Ready -> {
+                                if (uiState.messages.isEmpty() && !uiState.isLoading) {
+                                    Text(
+                                        text = "Start a conversation!",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.align(Alignment.Center)
+                                    )
+                                } else {
+                                    LazyColumn(
+                                        state = listState,
+                                        modifier = Modifier.fillMaxSize()
+                                    ) {
+                                        items(uiState.messages, key = { it.id }) { message ->
+                                            MessageBubble(message = message)
+                                        }
+                                        if (uiState.isLoading) {
+                                            item {
+                                                TypingIndicator()
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -130,9 +175,13 @@ fun ChatScreen(
                 tonalElevation = 2.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
+                val isInputEnabled = when (uiState.selectedProvider) {
+                    LlmProvider.GOOGLE_AI -> !uiState.isLoading
+                    LlmProvider.LOCAL -> uiState.modelState == ModelState.Ready && !uiState.isLoading
+                }
                 ChatInput(
                     onSendMessage = { viewModel.sendMessage(it) },
-                    enabled = uiState.modelState == ModelState.Ready && !uiState.isLoading
+                    enabled = isInputEnabled
                 )
             }
         }
@@ -244,6 +293,49 @@ private fun ErrorState(
         Spacer(modifier = Modifier.height(16.dp))
         Button(onClick = onRetryClick) {
             Text("Retry")
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ProviderDropdown(
+    selectedProvider: LlmProvider,
+    onProviderSelected: (LlmProvider) -> Unit,
+    enabled: Boolean,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { if (enabled) expanded = !expanded },
+        modifier = modifier.padding(end = 8.dp)
+    ) {
+        OutlinedTextField(
+            value = selectedProvider.displayName,
+            onValueChange = {},
+            readOnly = true,
+            enabled = enabled,
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                .size(width = 180.dp, height = 56.dp),
+            textStyle = MaterialTheme.typography.bodySmall
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            LlmProvider.entries.forEach { provider ->
+                DropdownMenuItem(
+                    text = { Text(provider.displayName) },
+                    onClick = {
+                        onProviderSelected(provider)
+                        expanded = false
+                    }
+                )
+            }
         }
     }
 }

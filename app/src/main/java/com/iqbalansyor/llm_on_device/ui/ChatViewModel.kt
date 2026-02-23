@@ -5,7 +5,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.iqbalansyor.llm_on_device.data.ChatRepository
 import com.iqbalansyor.llm_on_device.data.DownloadState
+import com.iqbalansyor.llm_on_device.data.GeminiRepository
 import com.iqbalansyor.llm_on_device.model.ChatMessage
+import com.iqbalansyor.llm_on_device.model.LlmProvider
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,12 +24,14 @@ sealed class ModelState {
 data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
     val isLoading: Boolean = false,
-    val modelState: ModelState = ModelState.NotDownloaded
+    val modelState: ModelState = ModelState.NotDownloaded,
+    val selectedProvider: LlmProvider = LlmProvider.LOCAL
 )
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository = ChatRepository(application)
+    private val localRepository = ChatRepository(application)
+    private val geminiRepository = GeminiRepository()
 
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
@@ -36,9 +40,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         checkModelStatus()
     }
 
+    fun setProvider(provider: LlmProvider) {
+        _uiState.value = _uiState.value.copy(
+            selectedProvider = provider,
+            messages = emptyList()
+        )
+        if (provider == LlmProvider.LOCAL) {
+            checkModelStatus()
+        }
+    }
+
     private fun checkModelStatus() {
         viewModelScope.launch {
-            if (repository.isModelDownloaded) {
+            if (localRepository.isModelDownloaded) {
                 _uiState.value = _uiState.value.copy(modelState = ModelState.Loading)
                 loadModel()
             } else {
@@ -49,7 +63,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun downloadModel() {
         viewModelScope.launch {
-            repository.getModelManager().copyModelFromAssets().collect { state ->
+            localRepository.getModelManager().copyModelFromAssets().collect { state ->
                 when (state) {
                     is DownloadState.NotStarted -> {
                         _uiState.value = _uiState.value.copy(modelState = ModelState.NotDownloaded)
@@ -74,7 +88,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun loadModel() {
-        val result = repository.initializeModel()
+        val result = localRepository.initializeModel()
         result.fold(
             onSuccess = {
                 _uiState.value = _uiState.value.copy(modelState = ModelState.Ready)
@@ -89,7 +103,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun sendMessage(content: String) {
         if (content.isBlank()) return
-        if (_uiState.value.modelState != ModelState.Ready) return
+
+        val currentProvider = _uiState.value.selectedProvider
+        if (currentProvider == LlmProvider.LOCAL && _uiState.value.modelState != ModelState.Ready) return
 
         val userMessage = ChatMessage(
             content = content,
@@ -101,7 +117,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         )
 
         viewModelScope.launch {
-            val response = repository.sendMessage(content)
+            val response = when (currentProvider) {
+                LlmProvider.LOCAL -> localRepository.sendMessage(content)
+                LlmProvider.GOOGLE_AI -> geminiRepository.sendMessage(content)
+            }
             val assistantMessage = ChatMessage(
                 content = response,
                 isFromUser = false
@@ -115,6 +134,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
-        repository.close()
+        localRepository.close()
     }
 }
