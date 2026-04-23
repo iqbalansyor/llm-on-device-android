@@ -53,6 +53,7 @@ Open the project in Android Studio and run on your device.
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) - App architecture and on-device LLM inference
 - [TOKENIZATION.md](TOKENIZATION.md) - How tokenization works in LLMs
+- [GEMINI_INTEGRATION.md](GEMINI_INTEGRATION.md) - Gemini API integration with tokenization comparison
 
 ## License
 
